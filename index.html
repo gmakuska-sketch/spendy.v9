@@ -492,7 +492,7 @@ function render(){
     pad.appendChild(modeRow);
 
     // Filter entries
-    let filteredEnts=periodEntries;
+    let filteredEnts=periodEnts;
     if(state.filterCat)filteredEnts=filteredEnts.filter(e=>e.category===state.filterCat);
     if(state.searchQuery){const q=state.searchQuery.toLowerCase();filteredEnts=filteredEnts.filter(e=>{const c=cm[e.category];return(c?.label||'').toLowerCase().includes(q)||(e.note||'').toLowerCase().includes(q)||String(e.amount).includes(q)||e.date.includes(q)});}
     const filteredTotal=filteredEnts.reduce((s,e)=>s+e.amount,0);
