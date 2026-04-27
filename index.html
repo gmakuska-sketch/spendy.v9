@@ -134,7 +134,7 @@ let state={
   saved:false,showAddCat:false,ncLabel:'',ncIcon:'💰',ncColor:'#2EC4B6',
   editBudget:false,tmpBud:{},
   expMonth:null,showPeriodModal:false,periodAction:null,confirmDeleteIdx:null,hiddenHist:null,confirmDeleteHist:null,hiddenPaydays:null,
-  searchQuery:'',filterCat:null,viewMode:'day',
+  searchQuery:'',filterCat:null,viewMode:'day',showBackupReminder:false,
   newPeriodName:'',newPeriodStart:'',showExport:false,showConfirmReset:false,
   payplan:null,showPaydayModal:false,editPaydayIdx:null,pdSalary:'',pdRent:'',pdLiving:'',pdNotes:'',pdExtras:[],
 };
@@ -338,6 +338,21 @@ function render(){
 
   // Toast
   if(state.saved)app.appendChild(h('div',{className:'toast'},'✓ Saved'));
+
+  // Backup reminder
+  if(state.showBackupReminder){
+    const lastB=LS.get('sp-last-backup');
+    const daysAgo=lastB?Math.floor((new Date()-new Date(lastB))/864e5):'never';
+    const banner=h('div',{style:{margin:'8px 14px',padding:'10px 14px',background:'#2A1A10',border:'1px solid #4A3020',borderRadius:'12px',display:'flex',alignItems:'center',gap:'10px',cursor:'pointer'},on:{click:()=>{state.showBackupReminder=false;update({showExport:true})}}},
+      h('span',{style:{fontSize:'18px'}},'⚠️'),
+      h('div',{style:{flex:1}},
+        h('p',{style:{margin:0,fontSize:'12px',fontWeight:600,color:'#E0A030'}},`Backup overdue${daysAgo==='never'?' — never backed up':` — ${daysAgo} days ago`}`),
+        h('p',{style:{margin:'2px 0 0',fontSize:'11px',color:'#8B7050'}},'Tap to back up your data now')
+      ),
+      h('button',{style:{background:'none',border:'none',color:'#5C6080',fontSize:'18px',cursor:'pointer',padding:'0 4px'},on:{click:e=>{e.stopPropagation();LS.set('sp-backup-dismissed',tk());state.showBackupReminder=false;render()}}},'×')
+    );
+    app.appendChild(banner);
+  }
 
   // ===== INPUT VIEW =====
   if(state.view==='input'){
@@ -738,12 +753,6 @@ function render(){
     );
     iBox.appendChild(iText);pad.appendChild(iBox);
 
-    // Restore hidden months
-    if(state.hiddenHist.length>0){
-      pad.appendChild(h('div',{style:{marginTop:'16px',textAlign:'center'}},
-        h('button',{className:'ch',style:{color:'#5C6080',fontSize:'11px'},on:{click:restoreHistMonths}},`Restore ${state.hiddenHist.length} hidden month${state.hiddenHist.length>1?'s':''} (${state.hiddenHist.join(', ')})`)
-      ));
-    }
     app.appendChild(pad);
   }
 
@@ -819,10 +828,6 @@ function render(){
       });pad.appendChild(trend);
     }
 
-    if(state.hiddenPaydays&&state.hiddenPaydays.length>0){
-      const ms=state.hiddenPaydays.map(p=>p.month).join(', ');
-      pad.appendChild(h('div',{style:{marginTop:'16px',textAlign:'center'}},h('button',{className:'ch',style:{color:'#5C6080',fontSize:'11px'},on:{click:restorePaydays}},`Restore ${state.hiddenPaydays.length} hidden (${ms})`)));
-    }
     pad.appendChild(h('p',{style:{fontSize:'10px',color:'#3E4260',marginTop:'12px',textAlign:'center'}},'Tap any card to edit'));
     app.appendChild(pad);
   }
@@ -838,10 +843,16 @@ function render(){
     md.appendChild(h('h3',{style:{margin:'0 0 12px',fontSize:'16px',color:'#E8E9F0'}},isEdit?'Edit Payday':'Log Payday'));
 
     md.appendChild(h('span',{className:'sl',style:{display:'block',marginBottom:'8px'}},'Fixed'));
-    [['Net Salary','pdSalary','Amount that hit your account'],['Rent / Mortgage','pdRent','e.g. -750']].forEach(([label,key,hint])=>{
-      md.appendChild(h('label',{style:{fontSize:'11px',color:'#6B7094',display:'block',marginBottom:'3px',marginTop:'8px'}},label));
-      md.appendChild(h('input',{type:'text',inputMode:'decimal',className:'mi',placeholder:hint,value:state[key],on:{input:e=>{state[key]=e.target.value;updPv()}}}));
-    });
+    // Salary (always positive)
+    md.appendChild(h('label',{style:{fontSize:'11px',color:'#6B7094',display:'block',marginBottom:'3px',marginTop:'8px'}},'Net Salary'));
+    md.appendChild(h('input',{type:'text',inputMode:'decimal',className:'mi',placeholder:'Amount that hit your account',value:state.pdSalary,on:{input:e=>{state.pdSalary=e.target.value;updPv()}}}));
+    // Rent (with +/- toggle)
+    md.appendChild(h('label',{style:{fontSize:'11px',color:'#6B7094',display:'block',marginBottom:'3px',marginTop:'8px'}},'Rent / Mortgage'));
+    const rentIsNeg=state.pdRent.startsWith('-');
+    md.appendChild(h('div',{style:{display:'flex',gap:'6px',alignItems:'center'}},
+      h('input',{type:'text',inputMode:'decimal',className:'mi',style:{flex:1},placeholder:'750',value:state.pdRent.replace(/^-/,''),on:{input:e=>{const v=e.target.value.replace(/^-/,'');state.pdRent=(rentIsNeg?'-':'')+v;updPv()}}}),
+      h('button',{style:{background:rentIsNeg?'#3A1A1A':'#1A3A1A',border:'1px solid '+(rentIsNeg?'#5A2A2A':'#2A5A2A'),borderRadius:'9px',color:rentIsNeg?'#E8564A':'#4AE88A',fontSize:'14px',fontWeight:700,width:'38px',height:'38px',cursor:'pointer',fontFamily:'inherit',flexShrink:0},on:{click:()=>{state.pdRent=state.pdRent.startsWith('-')?state.pdRent.slice(1):'-'+state.pdRent;updPv();render()}}},rentIsNeg?'−':'+')
+    ));
     md.appendChild(h('label',{style:{fontSize:'11px',color:'#6B7094',display:'block',marginBottom:'3px',marginTop:'8px'}},`Living Expenses${!isEdit?' (from '+lastLabel+')':''}`));
     md.appendChild(h('input',{type:'text',inputMode:'decimal',className:'mi',placeholder:isEdit?'Living amount':`Auto: \u20AC${lastLiving.toFixed(0)}`,value:state.pdLiving,on:{input:e=>{state.pdLiving=e.target.value;updPv()}}}));
 
@@ -857,7 +868,8 @@ function render(){
         const row=h('div',{style:{background:'#0E0E24',borderRadius:'10px',padding:'10px',marginBottom:'8px'}});
         row.appendChild(h('div',{style:{display:'flex',gap:'6px',marginBottom:'6px'}},
           h('input',{type:'text',className:'mi',style:{flex:1,fontSize:'13px',padding:'7px 10px'},placeholder:'Name (e.g. Holidays)',value:ex.name,on:{input:e=>{state.pdExtras[xi].name=e.target.value}}}),
-          h('input',{type:'text',inputMode:'decimal',className:'mi',style:{width:'80px',fontSize:'13px',padding:'7px 10px'},placeholder:'e.g. -500',value:ex.amount,on:{input:e=>{state.pdExtras[xi].amount=e.target.value;updPv()}}}),
+          h('input',{type:'text',inputMode:'decimal',className:'mi',style:{width:'60px',fontSize:'13px',padding:'7px 10px'},placeholder:'500',value:ex.amount.replace(/^-/,''),on:{input:e=>{const v=e.target.value.replace(/^-/,'');state.pdExtras[xi].amount=(state.pdExtras[xi].amount.startsWith('-')?'-':'')+v;updPv()}}}),
+          h('button',{style:{background:ex.amount.startsWith('-')?'#3A1A1A':'#1A3A1A',border:'1px solid '+(ex.amount.startsWith('-')?'#5A2A2A':'#2A5A2A'),borderRadius:'7px',color:ex.amount.startsWith('-')?'#E8564A':'#4AE88A',fontSize:'14px',fontWeight:700,width:'32px',height:'32px',cursor:'pointer',fontFamily:'inherit',flexShrink:0},on:{click:()=>{const cur=state.pdExtras[xi].amount;state.pdExtras[xi].amount=cur.startsWith('-')?cur.slice(1):'-'+cur;updPv();render()}}},ex.amount.startsWith('-')?'−':'+'),
           h('button',{className:'dl',style:{fontSize:'18px',color:'#5C6080'},on:{click:()=>{state.pdExtras=state.pdExtras.filter((_,i)=>i!==xi);render()}}},'\u00D7')
         ));
         row.appendChild(h('input',{type:'text',className:'mi',style:{width:'100%',fontSize:'11px',padding:'6px 10px'},placeholder:'Comment (optional)',value:ex.note||'',on:{input:e=>{state.pdExtras[xi].note=e.target.value}}}));
@@ -927,15 +939,23 @@ function render(){
       h('p',{style:{margin:'4px 0 0',fontSize:'12px',color:'#5C6080'}},`Started ${fd(curP.start)} · Day ${daysIn} · €${curTotal.toFixed(0)} spent`)
     ));
     if(!state.periodAction){
-      md.appendChild(h('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}},
-        h('button',{className:'ms',style:{padding:'12px'},on:{click:()=>update({periodAction:'new'})}},'Start New Month'),
-        h('button',{className:'mc',style:{padding:'12px'},on:{click:()=>update({periodAction:'edit'})}},'✏️ Edit Current Period'),
-        h('button',{className:'mc',style:{padding:'12px'},on:{click:()=>update({periodAction:'end'})}},'End Current (no new)'),
-        h('button',{className:'mc',style:{padding:'12px'},on:{click:()=>update({showPeriodModal:false,showExport:true})}},'📥 Export Data'),
-        h('button',{className:'mc',style:{padding:'12px'},on:{click:clearCurrentEntries}},'🗑 Clear Current Entries'),
-        h('button',{className:'mc',style:{padding:'12px',color:'#C0544E'},on:{click:()=>update({showConfirmReset:true})}},'⚠ Reset All Data'),
-        h('button',{className:'mc',style:{padding:'12px',color:'#5C6080'},on:{click:()=>update({showPeriodModal:false,periodAction:null})}},'Cancel')
-      ));
+      const buttons=[];
+      buttons.push(h('button',{className:'ms',style:{padding:'12px'},on:{click:()=>update({periodAction:'new'})}},'Start New Month'));
+      buttons.push(h('button',{className:'mc',style:{padding:'12px'},on:{click:()=>update({periodAction:'edit'})}},'✏️ Edit Current Period'));
+      buttons.push(h('button',{className:'mc',style:{padding:'12px'},on:{click:()=>update({periodAction:'end'})}},'End Current (no new)'));
+      buttons.push(h('button',{className:'mc',style:{padding:'12px'},on:{click:()=>update({showPeriodModal:false,showExport:true})}},'📥 Backup & Export'));
+      // Restore options
+      if(state.hiddenPaydays&&state.hiddenPaydays.length>0){
+        const ms=state.hiddenPaydays.map(p=>p.month).join(', ');
+        buttons.push(h('button',{className:'mc',style:{padding:'12px',color:'#E0A030'},on:{click:()=>{restorePaydays();state.showPeriodModal=false;render()}}},`♻️ Restore ${state.hiddenPaydays.length} deleted plan entries (${ms})`));
+      }
+      if(state.hiddenHist&&state.hiddenHist.length>0){
+        buttons.push(h('button',{className:'mc',style:{padding:'12px',color:'#E0A030'},on:{click:()=>{restoreHistMonths();state.showPeriodModal=false;render()}}},`♻️ Restore ${state.hiddenHist.length} deleted history months (${state.hiddenHist.join(', ')})`));
+      }
+      buttons.push(h('button',{className:'mc',style:{padding:'12px'},on:{click:clearCurrentEntries}},'🗑 Clear Current Entries'));
+      buttons.push(h('button',{className:'mc',style:{padding:'12px',color:'#C0544E'},on:{click:()=>update({showConfirmReset:true})}},'⚠ Reset All Data'));
+      buttons.push(h('button',{className:'mc',style:{padding:'12px',color:'#5C6080'},on:{click:()=>update({showPeriodModal:false,periodAction:null})}},'Cancel'));
+      md.appendChild(h('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}},...buttons));
     } else if(state.periodAction==='edit'){
       if(!state.editPeriodName)state.editPeriodName=curP.label;
       if(!state.editPeriodStart)state.editPeriodStart=curP.start;
@@ -1017,6 +1037,15 @@ function render(){
 }
 
 render();
+// Weekly backup reminder
+(function checkBackup(){
+  const last=LS.get('sp-last-backup');
+  const dismissed=LS.get('sp-backup-dismissed');
+  const now=new Date();
+  const daysSinceBackup=last?Math.floor((now-new Date(last))/864e5):999;
+  const daysSinceDismiss=dismissed?Math.floor((now-new Date(dismissed))/864e5):999;
+  if(daysSinceBackup>=7&&daysSinceDismiss>=1){state.showBackupReminder=true;render()}
+})();
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js')}
 </script>
 </body>
