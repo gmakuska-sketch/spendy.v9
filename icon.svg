@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0C0C1E"/>
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#4A5FD9" stroke-width="12"/>
+  <text x="256" y="290" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="160" font-weight="600" fill="#4A5FD9">€</text>
+  <circle cx="346" cy="156" r="28" fill="#4AE88A"/>
+</svg>
