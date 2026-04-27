@@ -220,8 +220,40 @@ function exportCSV(){
   dl(csv,'expenses_export.csv','text/csv');state.showExport=false;render();
 }
 function exportJSON(){
-  const data={historical:HIST,historicalOrder:HIST_ORDER,periods:state.periods,entries:state.entries,categories:state.cats,budgets:state.budgets};
+  const data={historical:HIST,historicalOrder:HIST_ORDER,periods:state.periods,entries:state.entries,categories:state.cats,budgets:state.budgets,payplan:state.payplan};
   dl(JSON.stringify(data,null,2),'expenses_full.json','application/json');state.showExport=false;render();
+}
+function backupToGDrive(){
+  const data={historical:HIST,historicalOrder:HIST_ORDER,periods:state.periods,entries:state.entries,categories:state.cats,budgets:state.budgets,payplan:state.payplan,backupDate:new Date().toISOString()};
+  const json=JSON.stringify(data,null,2);
+  const blob=new Blob([json],{type:'application/json'});
+  const file=new File([blob],`spend_backup_${tk()}.json`,{type:'application/json'});
+  if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({title:'Spend Backup',files:[file]}).then(()=>{
+      LS.set('sp-last-backup',tk());state.showExport=false;state.saved=true;render();setTimeout(()=>{state.saved=false;render()},1200);
+    }).catch(()=>{});
+  } else {
+    dl(json,`spend_backup_${tk()}.json`,'application/json');
+    LS.set('sp-last-backup',tk());state.showExport=false;render();
+  }
+}
+function restoreFromBackup(file){
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const data=JSON.parse(e.target.result);
+      if(data.entries)state.entries=data.entries;
+      if(data.categories)state.cats=data.categories;
+      if(data.periods)state.periods=data.periods;
+      if(data.budgets)state.budgets=data.budgets;
+      if(data.payplan)state.payplan=data.payplan;
+      const curPer=state.periods.find(p=>!p.end);
+      if(curPer?.budgets)state.budgets=curPer.budgets;
+      persist();state.showExport=false;state.saved=true;render();
+      setTimeout(()=>{state.saved=false;render()},1500);
+    }catch(err){alert('Invalid backup file')}
+  };
+  reader.readAsText(file);
 }
 function dl(content,filename,type){const b=new Blob([content],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=filename;a.click();URL.revokeObjectURL(u)}
 function catMap(){return Object.fromEntries(state.cats.map(c=>[c.id,c]))}
@@ -477,10 +509,10 @@ function render(){
     let searchTimer=null;
     searchRow.appendChild(h('input',{type:'text',className:'ni',style:{flex:1,marginBottom:0,fontSize:'12px',padding:'8px 12px'},placeholder:'Search entries...',value:state.searchQuery,on:{input:e=>{state.searchQuery=e.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(()=>{const el=document.activeElement;const sel=[el?.selectionStart,el?.selectionEnd];render();const inp=document.querySelector('[placeholder="Search entries..."]');if(inp){inp.focus();try{inp.setSelectionRange(sel[0],sel[1])}catch(x){}}},300)}}}));
     // Category filter chips
-    const filterRow=h('div',{style:{display:'flex',gap:'4px',marginBottom:'10px',overflowX:'auto',flexShrink:0}});
-    filterRow.appendChild(h('button',{className:`ch${!state.filterCat?' on':''}`,style:{fontSize:'10px',padding:'3px 8px',flexShrink:0},on:{click:()=>{state.filterCat=null;render()}}},'All'));
+    const filterRow=h('div',{style:{display:'flex',gap:'5px',marginBottom:'10px',flexWrap:'wrap'}});
+    filterRow.appendChild(h('button',{className:`ch${!state.filterCat?' on':''}`,style:{fontSize:'10px',padding:'3px 8px'},on:{click:()=>{state.filterCat=null;render()}}},'All'));
     state.cats.forEach(c=>{
-      filterRow.appendChild(h('button',{className:`ch${state.filterCat===c.id?' on':''}`,style:{fontSize:'10px',padding:'3px 8px',flexShrink:0},on:{click:()=>{state.filterCat=state.filterCat===c.id?null:c.id;render()}}},c.icon+' '+c.label));
+      filterRow.appendChild(h('button',{className:`ch${state.filterCat===c.id?' on':''}`,style:{fontSize:'10px',padding:'3px 8px'},on:{click:()=>{state.filterCat=state.filterCat===c.id?null:c.id;render()}}},c.icon+' '+c.label));
     });
     pad.appendChild(searchRow);
     pad.appendChild(filterRow);
@@ -943,13 +975,30 @@ function render(){
 
   if(state.showExport){
     const ov=h('div',{className:'ov',on:{click:e=>{if(e.target===e.currentTarget)update({showExport:false})}}});
-    const md=h('div',{className:'md'});
-    md.appendChild(h('h3',{style:{margin:'0 0 14px',fontSize:'16px',color:'#E8E9F0'}},'Export Data'));
+    const md=h('div',{className:'md',style:{maxHeight:'85vh',overflowY:'auto'}});
+    md.appendChild(h('h3',{style:{margin:'0 0 14px',fontSize:'16px',color:'#E8E9F0'}},'Backup & Export'));
+    
+    const lastBackup=LS.get('sp-last-backup');
+    if(lastBackup){
+      md.appendChild(h('p',{style:{fontSize:'11px',color:'#4AE88A',margin:'0 0 12px'}},`Last backup: ${fd(lastBackup)}`));
+    } else {
+      md.appendChild(h('p',{style:{fontSize:'11px',color:'#E0A030',margin:'0 0 12px'}},'No backup yet — back up your data regularly!'));
+    }
+
     md.appendChild(h('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}},
-      h('button',{className:'ms',style:{padding:'14px',textAlign:'left'},on:{click:exportCSV},innerHTML:'<span style="font-size:15px">📊 CSV</span><br><span style="font-size:11px;font-weight:400;opacity:.7">Monthly + daily data. Opens in Excel/Numbers.</span>'}),
-      h('button',{className:'ms',style:{padding:'14px',textAlign:'left',background:'#2A4A6B'},on:{click:exportJSON},innerHTML:'<span style="font-size:15px">💾 Full JSON</span><br><span style="font-size:11px;font-weight:400;opacity:.7">Upload to Claude to rebuild your .xlsx file</span>'}),
-      h('button',{className:'mc',style:{padding:'12px'},on:{click:()=>update({showExport:false})}},'Cancel')
+      h('button',{className:'ms',style:{padding:'14px',textAlign:'left',background:'#1B6B3B'},on:{click:backupToGDrive},innerHTML:'<span style="font-size:15px">☁️ Backup to Cloud</span><br><span style="font-size:11px;font-weight:400;opacity:.7">Save to Google Drive, iCloud, WhatsApp, or any app via share sheet</span>'}),
+      h('button',{className:'ms',style:{padding:'14px',textAlign:'left'},on:{click:exportCSV},innerHTML:'<span style="font-size:15px">📊 Export CSV</span><br><span style="font-size:11px;font-weight:400;opacity:.7">Monthly + daily data. Opens in Excel/Numbers.</span>'}),
+      h('button',{className:'ms',style:{padding:'14px',textAlign:'left',background:'#2A4A6B'},on:{click:exportJSON},innerHTML:'<span style="font-size:15px">💾 Export JSON</span><br><span style="font-size:11px;font-weight:400;opacity:.7">Full data file. Upload to Claude to rebuild .xlsx</span>'})
     ));
+
+    // Restore section
+    md.appendChild(h('div',{style:{borderTop:'1px solid #22223E',marginTop:'14px',paddingTop:'14px'}}));
+    md.appendChild(h('span',{className:'sl',style:{display:'block',marginBottom:'8px'}},'Restore from Backup'));
+    const fileInput=h('input',{type:'file',accept:'.json',style:{display:'none'},on:{change:e=>{if(e.target.files[0])restoreFromBackup(e.target.files[0])}}});
+    md.appendChild(fileInput);
+    md.appendChild(h('button',{className:'mc',style:{width:'100%',padding:'12px',textAlign:'left'},on:{click:()=>fileInput.click()},innerHTML:'<span style="font-size:14px">📂 Restore from JSON backup</span><br><span style="font-size:11px;color:#5C6080">Select a previously saved backup file</span>'}));
+
+    md.appendChild(h('button',{className:'mc',style:{padding:'12px',marginTop:'8px',width:'100%',color:'#5C6080'},on:{click:()=>update({showExport:false})}},'Cancel'));
     ov.appendChild(md);app.appendChild(ov);
   }
 
