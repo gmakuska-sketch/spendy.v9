@@ -474,7 +474,8 @@ function render(){
 
     // ===== SEARCH & FILTER =====
     const searchRow=h('div',{style:{display:'flex',gap:'6px',marginBottom:'10px',alignItems:'center'}});
-    searchRow.appendChild(h('input',{type:'text',className:'ni',style:{flex:1,marginBottom:0,fontSize:'12px',padding:'8px 12px'},placeholder:'Search entries...',value:state.searchQuery,on:{input:e=>{state.searchQuery=e.target.value;render()}}}));
+    let searchTimer=null;
+    searchRow.appendChild(h('input',{type:'text',className:'ni',style:{flex:1,marginBottom:0,fontSize:'12px',padding:'8px 12px'},placeholder:'Search entries...',value:state.searchQuery,on:{input:e=>{state.searchQuery=e.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(()=>{const el=document.activeElement;const sel=[el?.selectionStart,el?.selectionEnd];render();const inp=document.querySelector('[placeholder="Search entries..."]');if(inp){inp.focus();try{inp.setSelectionRange(sel[0],sel[1])}catch(x){}}},300)}}}));
     // Category filter chips
     const filterRow=h('div',{style:{display:'flex',gap:'4px',marginBottom:'10px',overflowX:'auto',flexShrink:0}});
     filterRow.appendChild(h('button',{className:`ch${!state.filterCat?' on':''}`,style:{fontSize:'10px',padding:'3px 8px',flexShrink:0},on:{click:()=>{state.filterCat=null;render()}}},'All'));
