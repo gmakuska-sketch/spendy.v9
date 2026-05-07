@@ -671,7 +671,43 @@ function render(){
       }
     });
 
+    // Closed periods (from app usage, not hardcoded)
+    const closedPeriods=state.periods.filter(p=>p.end).sort((a,b)=>a.start.localeCompare(b.start));
+    closedPeriods.forEach(p=>{
+      const pEnts=state.entries.filter(e=>e.date>=p.start&&e.date<=p.end);
+      const pSpent=computeSpent(pEnts);
+      const pTotal=sumObj(pSpent);
+      const pBudTotal=state.cats.reduce((s,c)=>s+(p.budgets?.[c.id]||0),0);
+      const ov=pTotal-pBudTotal,pc=pBudTotal>0?pTotal/pBudTotal*100:0;
+      const isE=state.expMonth==='closed_'+p.id;
+      const tr=h('tr',{className:'hrow',on:{click:()=>update({expMonth:isE?null:'closed_'+p.id})}},
+        h('td',{style:{fontWeight:600,fontSize:'12px'}},`${p.label} ${isE?'▲':'▼'}`),
+        h('td',{style:{textAlign:'right',color:'#5C6080',fontSize:'12px'}},`€${pBudTotal.toFixed(0)}`),
+        h('td',{style:{textAlign:'right',fontWeight:600,fontSize:'12px'}},`€${pTotal.toFixed(0)}`),
+        h('td',{style:{textAlign:'right',fontWeight:600,fontSize:'12px',color:ov>0?'#E8564A':'#4AE88A'}},`${ov>0?'+':''}€${ov.toFixed(0)}`),
+        h('td',{style:{textAlign:'right',fontSize:'12px'}},h('span',{className:'badge',style:{background:pc>100?'#E8564A22':pc>80?'#E0A03022':'#4AE88A22',color:pc>100?'#E8564A':pc>80?'#E0A030':'#4AE88A',fontSize:'11px'}},`${pc.toFixed(0)}%`)),
+        h('td',{})
+      );tbody.appendChild(tr);
+      if(isE){
+        const eTr=h('tr',{});const eTd=h('td',{style:{padding:0,border:'none'},colSpan:6});
+        const eDiv=h('div',{style:{background:'#111128',padding:'8px 10px',borderBottom:'1px solid #1A1A30'}});
+        eDiv.appendChild(h('p',{style:{fontSize:'10px',color:'#4A4E68',margin:'0 0 6px'}},`${fd(p.start)} → ${fd(p.end)}`));
+        state.cats.forEach(c=>{const cb=p.budgets?.[c.id]||0,cs=pSpent[c.id]||0,cpc=cb>0?cs/cb*100:cs>0?999:0;
+          eDiv.appendChild(h('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'3px 0',fontSize:'12px'}},
+            h('span',{},c.icon),h('span',{style:{color:'#8090B0',width:'62px'}},c.label),
+            h('span',{style:{color:'#5C6080',width:'45px',textAlign:'right'}},`€${cb}`),
+            h('span',{style:{fontWeight:600,color:'#C0C4D6',width:'45px',textAlign:'right'}},`€${cs.toFixed(0)}`),
+            h('div',{className:'bar-bg'},h('div',{className:'bar-fg',style:{width:`${Math.min(cpc,100)}%`,background:cpc>100?c.color:cpc>80?'#E0A030':'#4AE88A'}})),
+            h('span',{style:{fontSize:'10px',color:cpc>100?'#E8564A':'#5C6080',width:'32px',textAlign:'right'}},`${cpc.toFixed(0)}%`)
+          ));
+        });
+        eTd.appendChild(eDiv);eTr.appendChild(eTd);tbody.appendChild(eTr);
+      }
+    });
+
     // Current period row
+    const closedB=closedPeriods.reduce((s,p)=>s+state.cats.reduce((ss,c)=>ss+(p.budgets?.[c.id]||0),0),0);
+    const closedS=closedPeriods.reduce((s,p)=>{const pEnts=state.entries.filter(e=>e.date>=p.start&&e.date<=p.end);return s+pEnts.reduce((ss,e)=>ss+e.amount,0)},0);
     const curB=budTotal,curS=curTotal,curOv=curS-curB,curPc=curB>0?curS/curB*100:0;
     const curIsE=state.expMonth===curP.id;
     const curTr=h('tr',{className:'hrow',style:{background:'#0E0E28'},on:{click:()=>update({expMonth:curIsE?null:curP.id})}},
@@ -698,8 +734,8 @@ function render(){
     }
 
     // Totals
-    const allB=visHist.reduce((s,m)=>s+sumObj(HIST[m].b),0)+budTotal;
-    const allS=visHist.reduce((s,m)=>s+sumObj(HIST[m].s),0)+curTotal;
+    const allB=visHist.reduce((s,m)=>s+sumObj(HIST[m].b),0)+closedB+budTotal;
+    const allS=visHist.reduce((s,m)=>s+sumObj(HIST[m].s),0)+closedS+curTotal;
     tbody.appendChild(h('tr',{style:{borderTop:'2px solid #2A2A4A'}},
       h('td',{style:{fontWeight:700,fontSize:'12px'}},'TOTAL'),
       h('td',{style:{textAlign:'right',fontWeight:700,fontSize:'12px'}},`€${allB.toFixed(0)}`),
@@ -717,10 +753,14 @@ function render(){
     // Category averages
     pad.appendChild(h('span',{className:'sl'},'Category Averages'));
     const catTbody=h('tbody',{});
-    const n=visHist.length+1;
+    const n=visHist.length+closedPeriods.length+1;
     DEFAULT_CATS.forEach(c=>{
-      const aB=(visHist.reduce((s,m)=>s+(HIST[m]?.b[c.id]||0),0)+(state.budgets[c.id]||0))/n;
-      const aS=(visHist.reduce((s,m)=>s+(HIST[m]?.s[c.id]||0),0)+(curSpent[c.id]||0))/n;
+      const histB=visHist.reduce((s,m)=>s+(HIST[m]?.b[c.id]||0),0);
+      const histS=visHist.reduce((s,m)=>s+(HIST[m]?.s[c.id]||0),0);
+      const closedCatB=closedPeriods.reduce((s,p)=>s+(p.budgets?.[c.id]||0),0);
+      const closedCatS=closedPeriods.reduce((s,p)=>{const pEnts=state.entries.filter(e=>e.date>=p.start&&e.date<=p.end&&e.category===c.id);return s+pEnts.reduce((ss,e)=>ss+e.amount,0)},0);
+      const aB=(histB+closedCatB+(state.budgets[c.id]||0))/n;
+      const aS=(histS+closedCatS+(curSpent[c.id]||0))/n;
       const o=aS-aB;
       catTbody.appendChild(h('tr',{},
         h('td',{},`${c.icon} ${c.label}`),
@@ -739,13 +779,21 @@ function render(){
     const iBox=h('div',{style:{background:'#131328',borderRadius:'12px',padding:'14px',border:'1px solid #1A1A30'}});
     iBox.appendChild(h('span',{className:'sl',style:{display:'block',marginBottom:'10px'}},'Insights'));
     const catO=DEFAULT_CATS.map(c=>{
-      const aB=(visHist.reduce((s,m)=>s+(HIST[m]?.b[c.id]||0),0)+(state.budgets[c.id]||0))/n;
-      const aS=(visHist.reduce((s,m)=>s+(HIST[m]?.s[c.id]||0),0)+(curSpent[c.id]||0))/n;
+      const histB=visHist.reduce((s,m)=>s+(HIST[m]?.b[c.id]||0),0);
+      const histS=visHist.reduce((s,m)=>s+(HIST[m]?.s[c.id]||0),0);
+      const cB=closedPeriods.reduce((s,p)=>s+(p.budgets?.[c.id]||0),0);
+      const cS=closedPeriods.reduce((s,p)=>{const pe=state.entries.filter(e=>e.date>=p.start&&e.date<=p.end&&e.category===c.id);return s+pe.reduce((ss,e)=>ss+e.amount,0)},0);
+      const aB=(histB+cB+(state.budgets[c.id]||0))/n;
+      const aS=(histS+cS+(curSpent[c.id]||0))/n;
       return{...c,over:aS-aB,avgS:aS,avgB:aB};
     }).sort((a,b)=>b.over-a.over);
     const w=catO[0];
-    const tO=visHist.reduce((s,m)=>{const b=sumObj(HIST[m].b),sp=sumObj(HIST[m].s);return s+(sp-b)},0)+(curTotal-budTotal);
-    const obc=visHist.filter(m=>sumObj(HIST[m].s)>sumObj(HIST[m].b)).length+(curTotal>budTotal?1:0);
+    const tO=visHist.reduce((s,m)=>{const b=sumObj(HIST[m].b),sp=sumObj(HIST[m].s);return s+(sp-b)},0)
+      +closedPeriods.reduce((s,p)=>{const pB=state.cats.reduce((ss,c)=>ss+(p.budgets?.[c.id]||0),0);const pEnts=state.entries.filter(e=>e.date>=p.start&&e.date<=p.end);const pS=pEnts.reduce((ss,e)=>ss+e.amount,0);return s+(pS-pB)},0)
+      +(curTotal-budTotal);
+    const obc=visHist.filter(m=>sumObj(HIST[m].s)>sumObj(HIST[m].b)).length
+      +closedPeriods.filter(p=>{const pB=state.cats.reduce((s,c)=>s+(p.budgets?.[c.id]||0),0);const pEnts=state.entries.filter(e=>e.date>=p.start&&e.date<=p.end);return pEnts.reduce((s,e)=>s+e.amount,0)>pB}).length
+      +(curTotal>budTotal?1:0);
     const iText=h('div',{style:{fontSize:'12px',color:'#8090B0',lineHeight:'1.8'}},
       h('p',{style:{margin:'0 0 6px'},innerHTML:`<span style="color:#E8564A;font-weight:600">Over budget ${obc}/${n} months</span> — total overspend €${tO.toFixed(0)}`}),
       h('p',{style:{margin:'0 0 6px'},innerHTML:`<span style="font-weight:600;color:#E0A030">${w.icon} ${w.label}</span> is the biggest leak — avg +€${w.over.toFixed(0)}/mo (€${w.avgS.toFixed(0)} vs €${w.avgB.toFixed(0)})`}),
